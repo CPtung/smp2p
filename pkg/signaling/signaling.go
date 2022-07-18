@@ -1,0 +1,5 @@
+package singaling
+
+func New() {
+
+}
