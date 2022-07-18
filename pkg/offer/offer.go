@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/CPtung/smp2p/internal/util"
-	"github.com/CPtung/smp2p/pkg/ice"
 	"github.com/CPtung/smp2p/pkg/mqtt"
+	"github.com/CPtung/smp2p/pkg/signal"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/pion/webrtc/v3"
@@ -20,14 +20,14 @@ import (
 var target = "leanne"
 
 type OfferImpl struct {
-	ice.Desc
+	signal.Desc
 	mqttClient        MQTT.Client
 	candidatesMux     sync.Mutex
 	pendingCandidates []*webrtc.ICECandidate
 	peerConnection    *webrtc.PeerConnection
 }
 
-func New(desc ice.Desc) ice.Offer {
+func New(desc signal.Desc) signal.Offer {
 	offer := OfferImpl{
 		Desc:              desc,
 		mqttClient:        mqtt.NewClient(),
@@ -40,7 +40,7 @@ func New(desc ice.Desc) ice.Offer {
 	offer.AddSdpListener()
 	offer.AddCandidateListener()
 
-	// ICE handshake
+	// webrtc handshake
 	offer.NewPeerConnection()
 
 	return &offer

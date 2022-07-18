@@ -1,4 +1,4 @@
-package ice
+package signal
 
 type CandidateInfo struct {
 	Source    string `json:"source"`

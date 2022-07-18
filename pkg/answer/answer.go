@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/CPtung/smp2p/internal/util"
-	"github.com/CPtung/smp2p/pkg/ice"
 	"github.com/CPtung/smp2p/pkg/mqtt"
+	"github.com/CPtung/smp2p/pkg/signal"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/pion/webrtc/v3"
@@ -20,28 +20,27 @@ import (
 var target = "justin"
 
 type AnswerImpl struct {
-	ice.Desc
+	signal.Desc
 	mqttClient        MQTT.Client
 	candidatesMux     sync.Mutex
 	pendingCandidates []*webrtc.ICECandidate
 	peerConnection    *webrtc.PeerConnection
 }
 
-func New(desc ice.Desc) ice.Answer {
+func New(desc signal.Desc) signal.Answer {
 	ans := AnswerImpl{
 		Desc:              desc,
 		mqttClient:        mqtt.NewClient(),
 		pendingCandidates: make([]*webrtc.ICECandidate, 0),
 	}
 	if err := ans.Connect(); err != nil {
-		log.Println("noooooot connected")
 		return nil
 	}
 	// signaling server
 	ans.AddSdpListener()
 	ans.AddCandidateListener()
 
-	// ICE
+	// webrtc handshake
 	ans.NewPeerConnection()
 
 	return &ans
@@ -78,13 +77,6 @@ func (ans *AnswerImpl) AddSdpListener() {
 
 	onSdpReceived := func(client MQTT.Client, message MQTT.Message) {
 		fmt.Printf("Received sdp on topic: %s\n", message.Topic())
-		//info := ice.SdpInfo{}
-		//json.Unmarshal(message.Payload(), &info)
-
-		/*sdp := webrtc.SessionDescription{
-			Type: webrtc.SDPTypeOffer,
-			SDP:  string(message.Payload()),
-		}*/
 		sdp := webrtc.SessionDescription{}
 		json.Unmarshal(message.Payload(), &sdp)
 		if sdpErr := ans.peerConnection.SetRemoteDescription(sdp); sdpErr != nil {
