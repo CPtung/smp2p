@@ -6,9 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/CPtung/smp2p/pkg/ice"
 	"github.com/CPtung/smp2p/pkg/offer"
-
+	"github.com/CPtung/smp2p/pkg/ssh"
 	"github.com/spf13/cobra"
 )
 
@@ -23,18 +22,16 @@ func init() {
 }
 
 func offerRun(cmd *cobra.Command, args []string) {
-	client := offer.New(
-		ice.Desc{
-			Name: "justin",
-		},
-	)
-	if client == nil {
-		log.Println("create offer failed")
+
+	tcpClient := ssh.NewClient("127.0.0.1", 5566)
+	if err := tcpClient.Bind(); err != nil {
+		log.Println("create ssh client failed")
 		return
 	}
+
+	tcpClient.Listen(offer.New)
 
 	quit := make(chan os.Signal)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
-	client.Close()
 }

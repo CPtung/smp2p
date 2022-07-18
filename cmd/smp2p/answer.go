@@ -7,7 +7,7 @@ import (
 	"syscall"
 
 	"github.com/CPtung/smp2p/pkg/answer"
-	"github.com/CPtung/smp2p/pkg/ice"
+	"github.com/CPtung/smp2p/pkg/signaling"
 
 	"github.com/spf13/cobra"
 )
@@ -24,7 +24,7 @@ func init() {
 
 func answerRun(cmd *cobra.Command, args []string) {
 	client := answer.New(
-		ice.Desc{
+		signaling.Desc{
 			Name: "leanne",
 		},
 	)

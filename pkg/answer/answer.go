@@ -3,15 +3,13 @@ package answer
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"sync"
-	"time"
 
-	"github.com/CPtung/smp2p/internal/util"
 	"github.com/CPtung/smp2p/pkg/mqtt"
-	"github.com/CPtung/smp2p/pkg/signal"
+	"github.com/CPtung/smp2p/pkg/signaling"
+	"github.com/CPtung/smp2p/pkg/ssh"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/pion/webrtc/v3"
@@ -20,20 +18,24 @@ import (
 var target = "justin"
 
 type AnswerImpl struct {
-	signal.Desc
+	signaling.Desc
+	tcpServer         ssh.TcpServer
 	mqttClient        MQTT.Client
 	candidatesMux     sync.Mutex
 	pendingCandidates []*webrtc.ICECandidate
 	peerConnection    *webrtc.PeerConnection
 }
 
-func New(desc signal.Desc) signal.Answer {
+func New(desc signaling.Desc) signaling.Answer {
 	ans := AnswerImpl{
 		Desc:              desc,
+		tcpServer:         ssh.NewServer("127.0.0.1", 2222),
 		mqttClient:        mqtt.NewClient(),
 		pendingCandidates: make([]*webrtc.ICECandidate, 0),
 	}
+
 	if err := ans.Connect(); err != nil {
+		log.Printf("connect signaling broker error: %s", err.Error())
 		return nil
 	}
 	// signaling server
@@ -43,11 +45,17 @@ func New(desc signal.Desc) signal.Answer {
 	// webrtc handshake
 	ans.NewPeerConnection()
 
+	if err := ans.tcpServer.Bind(); err != nil {
+		log.Printf("bind tcp server error: %s", err.Error())
+		return nil
+	}
+
 	return &ans
 }
 
 func (ans *AnswerImpl) Close() {
 	if ans != nil {
+		ans.tcpServer.Close()
 		if ans.peerConnection != nil {
 			if cErr := ans.peerConnection.Close(); cErr != nil {
 				fmt.Printf("cannot close peerConnection: %v\n", cErr)
@@ -121,7 +129,6 @@ func (ans *AnswerImpl) AddSdpListener() {
 
 func (ans *AnswerImpl) Connect() error {
 	// connect to singaling server (MQTT)
-	fmt.Print("aaaaaaaa")
 	if token := ans.mqttClient.Connect(); token.Wait() && token.Error() != nil {
 		log.Printf("connect error: %s", token.Error())
 		return token.Error()
@@ -178,13 +185,11 @@ func (ans *AnswerImpl) NewPeerConnection() {
 
 		desc := ans.peerConnection.RemoteDescription()
 		if desc == nil {
-			log.Printf("pendingCandidate: %v", c)
 			pendingCandidates = append(pendingCandidates, c)
 		} else {
-			log.Printf("session: %s", desc)
 			onICECandidateErr := ans.signalCandidate(c)
 			if onICECandidateErr != nil {
-				panic(onICECandidateErr)
+				log.Printf("on ice candidate error: %s", onICECandidateErr.Error())
 			}
 		}
 	})
@@ -192,26 +197,18 @@ func (ans *AnswerImpl) NewPeerConnection() {
 	ans.peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		// Register channel opening handling
 		d.OnOpen(func() {
-			fmt.Printf("Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n", d.Label(), d.ID())
-			for range time.NewTicker(5 * time.Second).C {
-				message := util.RandSeq(15)
-				fmt.Printf("Sending '%s'\n", message)
-
-				// Send the message as text
-				sendTextErr := d.SendText(message)
-				if sendTextErr != nil {
-					if sendTextErr == io.ErrClosedPipe {
-						break
-					} else {
-						panic(sendTextErr)
-					}
-				}
-			}
+			//fmt.Printf("Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n", d.Label(), d.ID())
+			ans.tcpServer.Tx(&signaling.Wrap{DataChannel: d})
+			log.Println("tcp tx close, disconnected")
 		})
 
 		// Register text message handling
 		d.OnMessage(func(msg webrtc.DataChannelMessage) {
-			fmt.Printf("Message from DataChannel '%s': '%s'\n", d.Label(), string(msg.Data))
+			_, err := ans.tcpServer.Rx(msg.Data)
+			if err != nil {
+				log.Printf("tcp rx failed: %s", err)
+				return
+			}
 		})
 	})
 	// Set the handler for Peer connection state

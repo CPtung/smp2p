@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"sync"
-	"time"
 
-	"github.com/CPtung/smp2p/internal/util"
 	"github.com/CPtung/smp2p/pkg/mqtt"
-	"github.com/CPtung/smp2p/pkg/signal"
+	"github.com/CPtung/smp2p/pkg/signaling"
+	"github.com/CPtung/smp2p/pkg/ssh"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/pion/webrtc/v3"
@@ -20,16 +18,18 @@ import (
 var target = "leanne"
 
 type OfferImpl struct {
-	signal.Desc
+	signaling.Desc
+	tcpConn           ssh.TcpConn
 	mqttClient        MQTT.Client
 	candidatesMux     sync.Mutex
 	pendingCandidates []*webrtc.ICECandidate
 	peerConnection    *webrtc.PeerConnection
 }
 
-func New(desc signal.Desc) signal.Offer {
+func New(conn ssh.TcpConn) signaling.Offer {
 	offer := OfferImpl{
-		Desc:              desc,
+		Desc:              signaling.Desc{Name: "justin"},
+		tcpConn:           conn,
 		mqttClient:        mqtt.NewClient(),
 		pendingCandidates: make([]*webrtc.ICECandidate, 0),
 	}
@@ -40,9 +40,8 @@ func New(desc signal.Desc) signal.Offer {
 	offer.AddSdpListener()
 	offer.AddCandidateListener()
 
-	// webrtc handshake
+	// start listening ssh client connect request
 	offer.NewPeerConnection()
-
 	return &offer
 }
 
@@ -52,6 +51,7 @@ func (off *OfferImpl) Close() {
 			fmt.Printf("cannot close peerConnection: %v\n", cErr)
 		}
 		off.mqttClient.Disconnect(0)
+		off.tcpConn.Close()
 	}
 }
 
@@ -182,32 +182,26 @@ func (off *OfferImpl) NewPeerConnection() {
 			// Use webrtc.PeerConnectionStateDisconnected if you are interested in detecting faster timeout.
 			// Note that the PeerConnection may come back from PeerConnectionStateDisconnected.
 			fmt.Println("Peer Connection has gone to failed exiting")
-			os.Exit(0)
+			off.Close()
+		} else if s == webrtc.PeerConnectionStateDisconnected {
+			fmt.Println("Peer Disconnected")
+			off.Close()
 		}
 	})
 
 	// Register channel opening handling
 	dataChannel.OnOpen(func() {
-		fmt.Printf("Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n", dataChannel.Label(), dataChannel.ID())
-		for range time.NewTicker(5 * time.Second).C {
-			message := util.RandSeq(15)
-			fmt.Printf("Sending '%s'\n", message)
-
-			// Send the message as text
-			sendTextErr := dataChannel.SendText(message)
-			if sendTextErr != nil {
-				if sendTextErr == io.ErrClosedPipe {
-					break
-				} else {
-					panic(sendTextErr)
-				}
-			}
-		}
+		io.Copy(&signaling.Wrap{DataChannel: dataChannel}, off.tcpConn.Tx())
+		log.Println("disconnected....")
+		off.Close()
 	})
 
 	// Register text message handling
 	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-		fmt.Printf("Message from DataChannel '%s': '%s'\n", dataChannel.Label(), string(msg.Data))
+		if _, err := off.tcpConn.Rx(msg.Data); err != nil {
+			log.Printf("on message error: %s", err.Error())
+			off.Close()
+		}
 	})
 
 	// Create an offer to send to the other process
