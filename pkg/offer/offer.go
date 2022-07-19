@@ -191,6 +191,7 @@ func (off *OfferImpl) NewPeerConnection() {
 
 	// Register channel opening handling
 	dataChannel.OnOpen(func() {
+		log.Println("on open....")
 		io.Copy(&signaling.Wrap{DataChannel: dataChannel}, off.tcpConn.Tx())
 		log.Println("disconnected....")
 		off.Close()
@@ -202,6 +203,10 @@ func (off *OfferImpl) NewPeerConnection() {
 			log.Printf("on message error: %s", err.Error())
 			off.Close()
 		}
+	})
+
+	dataChannel.OnClose(func() {
+		off.Close()
 	})
 
 	// Create an offer to send to the other process

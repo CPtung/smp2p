@@ -16,6 +16,9 @@ type SdpInfo struct {
 	Sdp    string `json:"sdp"`
 }
 
+type SignalServer interface {
+}
+
 type Offer interface {
 	AddCandidateListener()
 	AddSdpListener()
@@ -23,8 +26,8 @@ type Offer interface {
 }
 
 type Answer interface {
-	AddCandidateListener()
-	AddSdpListener()
+	SignalSdp(sdp []byte) error
+	SignalCandidate(c *webrtc.ICECandidate) error
 	Close()
 }
 

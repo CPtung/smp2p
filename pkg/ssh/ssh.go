@@ -3,8 +3,8 @@ package ssh
 import (
 	"fmt"
 	"io"
-	"log"
 	"net"
+	"time"
 )
 
 type TcpServer interface {
@@ -26,17 +26,14 @@ func NewServer(ip string, port int) TcpServer {
 }
 
 func (s *SshServer) Bind() (err error) {
-	if s.conn, err = net.Dial("tcp", s.hostName); err != nil {
+	if s.conn, err = net.DialTimeout("tcp", s.hostName, time.Duration(3)*time.Second); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (s *SshServer) Tx(w io.Writer) error {
-	_, err := io.Copy(w, s.conn)
-	if err != nil {
-		log.Printf("server tx error: %s", err.Error())
-	}
+	io.Copy(w, s.conn)
 	return nil
 }
 
