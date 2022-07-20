@@ -7,13 +7,13 @@ import (
 )
 
 type CandidateInfo struct {
-	Source    string `json:"source"`
+	Name      string `json:"name"`
 	Candidate string `json:"candidate"`
 }
 
-type SdpInfo struct {
-	Source string `json:"source"`
-	Sdp    string `json:"sdp"`
+type DescInfo struct {
+	Name string                    `json:"name"`
+	Sdp  webrtc.SessionDescription `json:"sdp"`
 }
 
 type SignalServer interface {

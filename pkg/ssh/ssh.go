@@ -1,46 +1,52 @@
 package ssh
 
 import (
-	"fmt"
 	"io"
-	"net"
-	"time"
+	"log"
 )
 
-type TcpServer interface {
-	Bind() error
-	Tx(io.Writer) error
-	Rx([]byte) (int, error)
-	Close()
+type SSHServ struct {
 }
 
-type SshServer struct {
-	hostName string
-	conn     net.Conn
-}
-
-func NewServer(ip string, port int) TcpServer {
-	return &SshServer{
-		hostName: fmt.Sprintf("%s:%d", ip, port),
-	}
-}
-
-func (s *SshServer) Bind() (err error) {
-	if s.conn, err = net.DialTimeout("tcp", s.hostName, time.Duration(3)*time.Second); err != nil {
-		return err
-	}
+func (s *SSHServ) Create() error {
 	return nil
 }
 
-func (s *SshServer) Tx(w io.Writer) error {
-	io.Copy(w, s.conn)
+func (s *SSHServ) OnOpen(w io.Writer) {
+
+}
+
+func (s *SSHServ) OnMessage([]byte) {
+
+}
+
+func (s *SSHServ) OnClose() {
+	log.Println("on service close")
+}
+
+func NewServ() *SSHServ {
+	return &SSHServ{}
+}
+
+type SSHCli struct {
+}
+
+func (s *SSHCli) Create() error {
 	return nil
 }
 
-func (s *SshServer) Rx(data []byte) (int, error) {
-	return s.conn.Write(data)
+func (s *SSHCli) OnOpen(w io.Writer) {
+
 }
 
-func (s *SshServer) Close() {
-	s.conn.Close()
+func (s *SSHCli) OnMessage([]byte) {
+
+}
+
+func (s *SSHCli) OnClose() {
+	log.Println("on service close")
+}
+
+func NewCli() *SSHCli {
+	return &SSHCli{}
 }
