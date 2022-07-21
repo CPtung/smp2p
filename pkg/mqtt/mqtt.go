@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/CPtung/smp2p/pkg/signaling"
+	"github.com/CPtung/smp2p/internal/signaling"
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )
 
@@ -59,7 +59,6 @@ func (c *Client) AddICESdpListener(onSdp signaling.OnDescReceived) {
 func (c *Client) AddICECandidateListener(onCandidate signaling.OnCandidateReceived) {
 	onCandidateReceived :=
 		func(client MQTT.Client, message MQTT.Message) {
-			fmt.Printf("Received candidate on topic: %s\n", message.Topic())
 			onCandidate(message.Payload())
 		}
 

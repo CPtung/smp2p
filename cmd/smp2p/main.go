@@ -8,11 +8,11 @@ import (
 )
 
 var verbose bool
+var sport, dport int
 
 var rootCmd = &cobra.Command{
 	Use:   "smp2p",
 	Short: "\nsmtunnl p2p utility\n",
-	//	Run:   usage,
 }
 
 func init() {

@@ -1,14 +1,16 @@
 package peer
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"time"
 
+	"github.com/CPtung/smp2p/internal/signaling"
 	"github.com/CPtung/smp2p/pkg/mqtt"
-	"github.com/CPtung/smp2p/pkg/signaling"
-	"github.com/CPtung/smp2p/service"
+	"github.com/CPtung/smp2p/pkg/session"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -43,7 +45,7 @@ func Init(name string) *PeerConnection {
 	}
 }
 
-func (p *PeerConnection) CreateSession() (err error) {
+func (p *PeerConnection) Create() (err error) {
 	// Prepare the configuration
 	config := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
@@ -117,9 +119,9 @@ func (p *PeerConnection) CreateAnswerDesc(offerDesc []byte) (string, []byte, err
 	return offer.Name, data, err
 }
 
-func (p *PeerConnection) CreateOfferDataService(service service.Service) error {
+func (p *PeerConnection) BindOfferDataChannel(s session.Session) error {
 
-	if err := service.Create(); err != nil {
+	if err := s.Create(); err != nil {
 		return err
 	}
 
@@ -130,42 +132,40 @@ func (p *PeerConnection) CreateOfferDataService(service service.Service) error {
 	}
 
 	dc.OnOpen(func() {
-		log.Printf("OnOpen: %s-%d. Start sending a series of 1024-byte packets as fast as it can\n", dc.Label(), dc.ID())
-		service.OnOpen(&Wrap{DataChannel: dc})
+		s.OnOpen(&Wrap{DataChannel: dc})
+		p.pc.Close()
+		os.Exit(0)
 	})
 
 	// Register the OnMessage to handle incoming messages
 	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-		log.Println("on message.....")
-		service.OnMessage(msg.Data)
+		s.OnMessage(msg.Data)
 	})
 
-	dc.OnClose(service.OnClose)
+	dc.OnClose(s.OnClose)
 
 	return nil
 }
 
-func (p *PeerConnection) CreateAnswerDataService(service service.Service) error {
+func (p *PeerConnection) CreateAnswerDataService(s session.Session) error {
 
-	if err := service.Create(); err != nil {
+	if err := s.Create(); err != nil {
 		return err
 	}
 
 	p.pc.OnDataChannel(func(dc *webrtc.DataChannel) {
 		// Register channel opening handling
 		dc.OnOpen(func() {
-			log.Printf("OnOpen: %s-%d. Start receiving data", dc.Label(), dc.ID())
-			service.OnOpen(&Wrap{DataChannel: dc})
+			s.OnOpen(&Wrap{DataChannel: dc})
 		})
 
 		// Register the OnMessage to handle incoming messages
 		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-			log.Println("on message.....")
-			service.OnMessage(msg.Data)
+			s.OnMessage(msg.Data)
 		})
 
 		dc.OnClose(func() {
-			service.OnClose()
+			s.OnClose()
 			p.pc.Close()
 		})
 	})
@@ -263,7 +263,11 @@ func (p *PeerConnection) OnRemoteDescription(onRecv signaling.OnDescReceived) {
 func (p *PeerConnection) Close() {
 	p.signal.Disconnect()
 	log.Println("signaling disconnected")
-	log.Printf("pc state: %s", p.pc.ConnectionState().String())
-	p.pc.Close()
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Second)
+	go func() {
+		p.pc.Close()
+		cancel()
+	}()
+	<-ctx.Done()
 	log.Println("pc disconnected")
 }
