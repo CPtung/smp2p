@@ -45,7 +45,7 @@ func Init(name string) *PeerConnection {
 	}
 }
 
-func (p *PeerConnection) Create() (err error) {
+func (p *PeerConnection) Create(api *webrtc.API) (err error) {
 	// Prepare the configuration
 	config := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
@@ -55,7 +55,11 @@ func (p *PeerConnection) Create() (err error) {
 		},
 	}
 	// Create a new PeerConnection
-	p.pc, err = webrtc.NewPeerConnection(config)
+	if api != nil {
+		p.pc, err = api.NewPeerConnection(config)
+	} else {
+		p.pc, err = webrtc.NewPeerConnection(config)
+	}
 	return err
 }
 
@@ -166,7 +170,6 @@ func (p *PeerConnection) CreateAnswerDataService(s session.Session) error {
 
 		dc.OnClose(func() {
 			s.OnClose()
-			p.pc.Close()
 		})
 	})
 
@@ -265,7 +268,9 @@ func (p *PeerConnection) Close() {
 	log.Println("signaling disconnected")
 	ctx, cancel := context.WithTimeout(context.TODO(), time.Second)
 	go func() {
-		p.pc.Close()
+		if p.pc != nil {
+			p.pc.Close()
+		}
 		cancel()
 	}()
 	<-ctx.Done()

@@ -15,6 +15,8 @@ import (
 
 var (
 	command string
+	offUser string
+	remote  string
 )
 
 var offerCmd = &cobra.Command{
@@ -27,6 +29,10 @@ func init() {
 	rootCmd.AddCommand(offerCmd)
 	offerCmd.Flags().StringVarP(&command, "command", "c", "", "smp2p offer -c \"ssh moxa@127.0.0.1 -p ${LOCAL_PORT}\"")
 	offerCmd.Flags().IntVarP(&dport, "port", "p", 5566, "smp2p offer -p 5566")
+	// Set local peer name for signaling handshake
+	offerCmd.Flags().StringVarP(&offUser, "user", "u", "moxamoxa", "")
+	// Set remote peer name for signaling handshake
+	offerCmd.Flags().StringVarP(&remote, "remote", "r", "moxa", "")
 }
 
 func offerRun(cmd *cobra.Command, args []string) {
@@ -37,17 +43,13 @@ func offerRun(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// Set remote peer name "leanne" for signaling handshake
-	remote := "leanne"
-
-	// Set local peer with name "justin" for signaling handshake
-	pc := peer.Init("justin")
+	pc := peer.Init(offUser)
 	if pc == nil {
 		return
 	}
 
 	// Create PeerConnection
-	if err := pc.Create(); err != nil {
+	if err := pc.Create(nil); err != nil {
 		log.Printf("create session error: %s", err.Error())
 		return
 	}
