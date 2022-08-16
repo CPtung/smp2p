@@ -1,80 +1,86 @@
 package mqtt
 
 import (
+	"errors"
 	"fmt"
-	"log"
+	"sync"
 
-	"github.com/CPtung/smp2p/internal/signaling"
+	"github.com/sirupsen/logrus"
+
+	"github.com/CPtung/smp2p/pkg/model"
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )
 
-var sdpTopic = ""
+var (
+	sdpTopic       = ""
+	candidateTopic = ""
+	log            = logrus.WithField("origin", "mqtt")
+)
 
-var candidateTopic = ""
-
-type Client struct {
-	mq                MQTT.Client
+type Connection struct {
+	lock              sync.Mutex
+	client            MQTT.Client
 	sdpSubTopic       string
 	candidateSubTopic string
 }
 
-func (c *Client) Connect() error {
-	if token := c.mq.Connect(); token.Wait() && token.Error() != nil {
+func (c *Connection) Connect() error {
+	if token := c.client.Connect(); token.Wait() && token.Error() != nil {
 		log.Printf("connect error: %s", token.Error())
 		return token.Error()
 	}
 	return nil
 }
 
-func (c *Client) Disconnect() {
-	c.mq.Disconnect(0)
+func (c *Connection) Disconnect() {
+	c.client.Disconnect(0)
 }
 
-func (c *Client) SendICESdp(remote string, sdp []byte) error {
-	sdpTopic := fmt.Sprintf("/sdp/%s/listen", remote)
-	if token := c.mq.Publish(sdpTopic, 0, false, sdp); token != nil && token.Error() != nil {
-		return token.Error()
-	}
-	return nil
-}
-
-func (c *Client) SendICECandidate(remote, candidate string) error {
-	candidateTopic := fmt.Sprintf("/candidate/%s/listen", remote)
-	if token := c.mq.Publish(candidateTopic, 0, false, []byte(candidate)); token != nil && token.Error() != nil {
-		return token.Error()
-	}
-	return nil
-}
-
-func (c *Client) AddICESdpListener(onSdp signaling.OnDescReceived) {
-	onSdpReceived := func(client MQTT.Client, message MQTT.Message) {
-		onSdp(message.Payload())
-	}
-
-	if token := c.mq.Subscribe(c.sdpSubTopic, 0, onSdpReceived); token.Wait() && token.Error() != nil {
-		fmt.Println(token.Error())
-	}
-}
-
-func (c *Client) AddICECandidateListener(onCandidate signaling.OnCandidateReceived) {
-	onCandidateReceived :=
-		func(client MQTT.Client, message MQTT.Message) {
-			onCandidate(message.Payload())
-		}
-
-	if token := c.mq.Subscribe(c.candidateSubTopic, 0, onCandidateReceived); token.Wait() && token.Error() != nil {
-		fmt.Println(token.Error())
-	}
-}
-
-func New(name string) *Client {
+func New(name string) *Connection {
 	opts := MQTT.NewClientOptions()
 	opts.AddBroker("tcp://test.mosquitto.org:1883")
 	opts.ClientID = name
 
-	return &Client{
-		mq:                MQTT.NewClient(opts),
-		sdpSubTopic:       fmt.Sprintf("/sdp/%s/listen", name),
-		candidateSubTopic: fmt.Sprintf("/candidate/%s/listen", name),
+	connect := &Connection{
+		client:            MQTT.NewClient(opts),
+		sdpSubTopic:       fmt.Sprintf("/%s/sdp", name),
+		candidateSubTopic: fmt.Sprintf("/%s/candidate", name),
 	}
+	if err := connect.Connect(); err != nil {
+		log.Errorf("mqtt connection error: %s", err.Error())
+		return nil
+	}
+	return connect
+}
+
+func (c *Connection) ForceSubscribe(topic string, handler func(topic string, data []byte)) {
+	callback := func(client MQTT.Client, msg MQTT.Message) {
+		handler(msg.Topic(), msg.Payload())
+	}
+	token := c.client.Subscribe(topic, byte(0), callback)
+	if !token.Wait() {
+		log.Errorln("subscribe token wait failure")
+	}
+	if err := token.Error(); err != nil {
+		log.Errorln("subscribe fail, err:", err)
+	}
+}
+
+func (c *Connection) ForcePublish(msg model.Message, compress bool) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	payload := msg.Content
+	log.Debugln("@@ out >>", msg.Topic, len(msg.Content), len(payload))
+	token := c.client.Publish(msg.Topic, byte(msg.QOS), msg.Retain, payload)
+	token.Wait()
+	if !token.Wait() {
+		log.Errorln("token wait failure")
+		return errors.New("token wait failure")
+	}
+	if err := token.Error(); err != nil {
+		log.Errorln("publish get fail token, err:", err)
+		return fmt.Errorf("publish get fail token, err: %s", err.Error())
+	}
+	return nil
 }
